@@ -42,6 +42,13 @@ DoesSudo()    { groups | grep -Pw 'root|wheel' >/dev/null ; }
 PacdiffCmd() {
     local differ="$1"
 
+    # files that should always be excluded from pacdiff
+    local -a exclude_files=(
+        "/etc/pacman.conf"
+        "/etc/pacman.d/endeavouros-mirrorlist"
+        "/etc/pacman.d/mirrorlist"
+    )
+
     if HasPacdiffs ; then
         case "$differ" in            # some differs may need options
             vim) differ+=" -d" ;;
@@ -56,8 +63,25 @@ PacdiffCmd() {
 echo "==> starting pacdiff with '$differ' diff support..." >&2
 EOF
         if [ $backup_all = yes ] ; then
-            local -r pacnews=($(DIFFPROG=diff /usr/bin/pacdiff -o))
+            local -a pacnews
+            mapfile -t pacnews < <(DIFFPROG=diff /usr/bin/pacdiff -o)
+
+            # filter out excluded files
+            local filtered=()
+            for f in "${pacnews[@]}"; do
+                skip=no
+                for ex in "${exclude_files[@]}"; do
+                    if [[ "$f" == "$ex" ]]; then
+                        skip=yes
+                        break
+                    fi
+                done
+                [[ $skip == no ]] && filtered+=("$f")
+            done
+            pacnews=("${filtered[@]}")
+
             local -r time=$(date +%Y%m%d-%H%M%S)
+
 
             cat <<EOF >> $cmdfile
 echo "  -> creating backups under folder $backupdir" >&2
